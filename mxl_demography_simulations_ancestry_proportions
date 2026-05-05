@@ -1,0 +1,270 @@
+import msprime
+import numpy as np
+
+# window size in bases
+window_size = 50_000
+
+# Loop random seeds
+for counter in range(1, 201):
+
+    demography = msprime.Demography()
+
+###########################################
+########## MXL Demographic Model ##########
+###########################################
+  
+    #region
+    # Add populations
+    demography.add_population(name="ANC",   initial_size=7300,  description="Ancestral hominins")
+    demography.add_population(name="AMH",   initial_size=7300,  description="Anatomically modern humans")
+    demography.add_population(name="ARC",   initial_size=13249, description="Archaic hominins")
+    demography.add_population(name="DEN",   initial_size=0,     description="Denisovans")       # Starts inactive until split
+    demography.add_population(name="NEA",   initial_size=0,     description="Neanderthals")    # Starts inactive until split
+    demography.add_population(name="AFR",   initial_size=12300, description="Africans")
+    demography.add_population(name="firstOOA", initial_size=0,   description="First Humans Out of Africa humans")
+    demography.add_population(name="OOA",   initial_size=2100,  description="Out of Africa humans (NEA admixed OOA)")
+    demography.add_population(name="EUR",   initial_size=16932, growth_rate=0.0023, description="Europeans")
+    demography.add_population(name="firstEAS", initial_size=0,   description="First East Asian Ancestral (unadmixed)")
+    demography.add_population(name="preEAS", initial_size=0,     description="East Asians before the split from NAT (archaically admixed)")
+    demography.add_population(name="EAS",   initial_size=29040, growth_rate=0.0037, description="East Asians after split with NAT (archaically admixed)")
+    demography.add_population(name="NAT",   initial_size=0,     growth_rate=0.005,   description="Indigenous Americans precolonization")
+    demography.add_population(name="MXL",   initial_size=59211, growth_rate=0.005,   description="Mexicans after colonization")
+
+    # Initial symmetric migration rates 
+    demography.set_symmetric_migration_rate(["AFR", "EAS"], 1.9e-5)   # Gene flow between Africans and East Asians
+    demography.set_symmetric_migration_rate(["EUR", "EAS"], 13.5e-5)  # Gene flow between Europeans and East Asians
+    demography.set_symmetric_migration_rate(["AFR", "EUR"], 3e-5)     # Gene flow between Africans and Europeans
+    demography.set_symmetric_migration_rate(["AFR", "firstOOA"], 25e-5)  # Gene flow between Africans and first Out‐of‐Africa
+
+    # Update NAT (Indigenous Americans) to its post‐colonization size and growth
+    demography.add_population_parameters_change(time=12, population="NAT", initial_size=55754, growth_rate=0.005)
+
+    # Admixture event at time 12: MXL receives ancestry from EUR (33%), AFR (16%), NAT (51%)
+    demography.add_admixture(time=12, derived="MXL", ancestral=["EUR", "AFR", "NAT"], proportions=[0.33, 0.16, 0.51])
+
+    # Pre‐East Asian (preEAS) becomes active with size 1,188 and growth rate 0.0037
+    demography.add_population_parameters_change(time=864, population="preEAS", initial_size=1188, growth_rate=0.0037)
+
+    # Split preEAS into EAS and NAT at time 864
+    demography.add_population_split(time=864, derived=["EAS", "NAT"], ancestral="preEAS")
+    
+    # Set NEA (Neanderthals) to size 826 (activate) # Set DEN (Denisovans) to size 5083 (activate)
+    demography.add_population_parameters_change(time=1056, population="NEA", initial_size=826)
+
+    # Set DEN (Denisovans) to size 5083 (activate)
+    demography.add_population_parameters_change(time=1056, population="DEN", initial_size=5083)
+
+    # Activate firstEAS population at time 1056 with size 590
+    demography.add_population_parameters_change(time=1056, population="firstEAS", initial_size=590)
+
+    # Admixture at time 1056: preEAS receives 90% from firstEAS and 10% from Denisovans
+    demography.add_admixture(time=1056, derived="preEAS", ancestral=["firstEAS", "DEN"], proportions=[0.9, 0.1])
+
+    # Split OOA into EUR and firstEAS at time 1056
+    demography.add_population_split(time=1056, derived=["EUR", "firstEAS"], ancestral="OOA")
+
+    # Change migration between AFR and OOA at time 1056 to 25e-5
+    demography.add_symmetric_migration_rate_change(time=1056, populations=["AFR", "OOA"], rate=25e-5)
+
+    # Set firstOOA size back to 2100 at time 1566
+    demography.add_population_parameters_change(time=1566, population="firstOOA", initial_size=2100)
+
+    # Admixture: OOA receives 90% from firstOOA and 10% from Neanderthals at time 1566
+    demography.add_admixture(time=1566, derived="OOA", ancestral=["firstOOA", "NEA"], proportions=[0.9, 0.1])
+
+    # Turn off migration between AFR and OOA at time 1566
+    demography.add_symmetric_migration_rate_change(time=1566, populations=["AFR", "OOA"], rate=0)
+
+    # Split AMH into firstOOA and AFR at time 5600
+    demography.add_population_split(time=5600, derived=["firstOOA", "AFR"], ancestral="AMH")
+ 
+    # Update AMH population size to 12,300 at time 8800
+    demography.add_population_parameters_change(time=8800, population="AMH", initial_size=12300)
+
+    # Split ARC into DEN and NEA at time 15090
+    demography.add_population_split(time=15090, derived=["DEN", "NEA"], ancestral="ARC")
+
+    # Split ANC into ARC and AMH at time 20225
+    demography.add_population_split(time=20225, derived=["ARC", "AMH"], ancestral="ANC")
+
+    # Simulate ancestry for one haploid sample from each present-day population
+    
+    ts = msprime.sim_ancestry(
+        samples=[
+            msprime.SampleSet(population="AFR", time=0, num_samples=661),   # African sample at present
+            msprime.SampleSet(population="EUR", time=0, num_samples=503),   # European sample at present
+            msprime.SampleSet(population="EAS", time=0, num_samples=504),   # East Asian sample at present
+            msprime.SampleSet(population="MXL", time=0, num_samples=64),   # Mexican sample at present
+            msprime.SampleSet(population="NEA", time=1056, num_samples=0),
+            msprime.SampleSet(population="DEN", time=1056, num_samples=0),],
+        demography=demography,
+        sequence_length=100_000_000,     
+        recombination_rate=1e-8,        
+        record_migrations=True,         
+        random_seed=counter)
+    
+    """
+    ts = msprime.sim_ancestry(
+        samples=[
+            msprime.SampleSet(population="MXL", time=0, num_samples=10),   # African sample at present
+            msprime.SampleSet(population="AFR", time=0, num_samples=10),   # European sample at present
+            msprime.SampleSet(population="EUR", time=0, num_samples=10),   # East Asian sample at present
+            msprime.SampleSet(population="EAS", time=0, num_samples=10),   # Mexican sample at present
+            # Include one sample each from NEA and DEN exactly at time 1056 to define their branch length
+            msprime.SampleSet(population="NEA", time=1056, num_samples=0),
+            msprime.SampleSet(population="DEN", time=1056, num_samples=0),],
+        demography=demography,
+        sequence_length=1_000_000,     
+        recombination_rate=1e-8,        
+        record_migrations=True,         
+        random_seed=counter)
+    """
+    # Overlay mutations on the simulated ancestry 
+    mts = msprime.sim_mutations(ts, rate=1e-8)
+    #print(demography.debug())
+    #endregion
+
+###########################################
+##### Ancestry Proportions in windows #####
+###########################################
+
+    #region
+
+    # map population names to their IDs
+    pop_name_to_id = {pop.metadata["name"]: pop.id for pop in mts.populations()}  
+
+    # map population IDs back to their names
+    popid_to_name = {pop.id: pop.metadata["name"] for pop in mts.populations()}  
+
+    # get the ID number for the population named "MXL"
+    mxl_id = pop_name_to_id["MXL"]                         
+
+    # collect migrations where source population is MXL
+    migrations = [mig for mig in mts.migrations() if mig.source == mxl_id]  
+
+    # set the size of each genomic window in bases
+    window_size = 50_000                                   
+
+    # get the total sequence length as an integer
+    seq_len = int(mts.sequence_length)                 
+
+    # create window breakpoints from 0 to seq_len
+    bins = np.arange(0, seq_len + window_size, window_size)  
+
+    # compute number of windows from bins
+    n_windows = len(bins) - 1                            
+
+    # list sample node IDs belonging to MXL population
+    mxl_samples = [n for n in mts.samples() if mts.node(n).population == mxl_id]  
+
+    # count how many MXL samples there are
+    n_mxl = len(mxl_samples)                         
+
+    # get all destination population names seen in migrations
+    dest_pops = {popid_to_name[mig.dest] for mig in migrations}  
+
+    # initialize zero arrays for each destination population
+    counts = {pop_name: np.zeros(n_windows) for pop_name in dest_pops}  
+
+    # loop over each migration record
+    for mig in migrations:                                  
+        # find the name of the destination population
+        dest_name = popid_to_name[mig.dest]                 
+        # loop over each window index
+        for i in range(n_windows):                          
+            # define window start and end positions
+            start, end = bins[i], bins[i+1]                 
+            # calculate overlap between migration segment and window
+            overlap = min(end, mig.right) - max(start, mig.left)  
+            # if there is overlap, add to the correct array
+            if overlap > 0:                                  
+                counts[dest_name][i] += overlap             
+
+    # compute denominator for proportion conversion
+    denominator = window_size * n_mxl                     
+
+    # convert raw overlap counts to proportions per base per sample
+    counts_pct  = {pop: arr / denominator for pop, arr in counts.items()}  
+
+    # build output file path with window size and simulation counter
+    out_file = f"/path/to/file/mxlmodel_ancprop_{window_size // 1000}kb_sim{counter}.txt"
+
+    # open file for writing results
+    with open(out_file, "w") as f:                          
+        # write header line with dynamic population columns
+        header_cols = ["window_start", "window_end"] + [f"{pop}_percent" for pop in sorted(dest_pops)]
+        f.write("\t".join(header_cols) + "\n")              
+        # write one line per window with proportions for each population
+        for i in range(n_windows):                          
+            row = [str(bins[i]), str(bins[i+1])] + [f"{counts_pct[pop][i]:.6f}" for pop in sorted(dest_pops)]
+            f.write("\t".join(row) + "\n")
+    #endregion
+
+###########################################
+############ Write a VCF File #############
+###########################################
+
+    #region
+        # VCF output
+        vcf_file = f"/path/to/file/mxlmodel_variants_{window_size//1000}kb_sim{counter}.vcf"
+
+        # temporary (raw) VCF filename for the raw output, used for making vcf file with identifiable samples
+        tmp_vcf = f"/path/to/file/mxlmodel_variants_{window_size//1000}kb_sim{counter}.rawsamples.vcf"
+
+        # Write the raw VCF
+        with open(tmp_vcf, "w") as v:
+            mts.write_vcf(v)
+
+        # Build sample name list
+        pop_order  = ["MXL", "AFR", "EUR", "EAS", "NEA", "DEN"]
+
+        # Map population names to their IDs for selecting samples
+        pop_id_map = {pop.name: pop.id for pop in demography.populations}
+
+        # Initialize a list to hold the new sample names
+        sample_names = []
+        
+        # For each population in pop_order, collect its samples and assign names
+        for pop in pop_order:
+            nodes = [n for n in mts.samples() if mts.node(n).population == pop_id_map[pop]]
+            for i, _ in enumerate(nodes):
+                sample_names.append(f"{pop}_{i}")
+
+        # Rewrite the header line in the VCF with the new sample names
+        with open(tmp_vcf) as vcf_in, open(vcf_file, "w") as vcf_out:
+            for line in vcf_in:
+
+                # If line is header row in input, then take that row and strip the header names
+                if line.startswith("#CHROM"):
+                    cols = line.rstrip().split("\t")
+                    vcf_out.write("\t".join(cols[:9] + sample_names) + "\n")
+                else:
+                    vcf_out.write(line)
+    #endregion
+
+###########################################
+######### Write migrations table ##########
+###########################################
+
+    #region
+
+        # Define the migration table output filename
+        migration_file = f"/path/to/file/mxlmodel_migration_table_sim{counter}.txt"
+
+        # Open the migration file
+        with open(migration_file, "w") as mf:
+
+            # Write the header rows for migration ta
+            pop_id_map = {pop.name: i for i, pop in enumerate(demography.populations)}
+            mf.write(f"#{pop_id_map}\n")
+            mf.write("time\tleft\tright\tnode\tsource\tdest\n")
+
+            # Iterate over all recorded migration events in the tree sequence
+            for mig in mts.migrations():
+
+                # Keep events within the first 12 generations or at times 1056 or 1566
+                if mig.time <= 12:
+
+                    # Write each migration's fields as a tab-separated line
+                    mf.write(f"{mig.time}\t"f"{mig.left}\t"f"{mig.right}\t"f"{mig.node}\t"f"{mig.source}\t"f"{mig.dest}\n")
+    #endregion
